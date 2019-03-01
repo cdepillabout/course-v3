@@ -113,6 +113,7 @@ mkShell {
   name = "fast.ai-course-jupyter-env";
   buildInputs = [
     myJupyter
+    myPythonEnv
   ];
   inputsFrom = [ ];
   shellHook = ''

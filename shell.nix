@@ -23,31 +23,49 @@ with pkgs;
 let
   myPython = python37;
 
-  fastai = myPython.buildPythonPackage rec {
+  fastprogress = myPython.pkgs.buildPythonPackage rec {
+    pname = "fastprogress";
+    version = "0.1.20";
+
+    src = myPython.pkgs.fetchPypi {
+      inherit pname version;
+      sha256 = "1afrhrr9l8pn7gzr5f5rscj9x64vng7n33cxgl95s022lbc4s489";
+    };
+  };
+
+  nvidia-ml-py3 = myPython.pkgs.buildPythonPackage rec {
+    pname = "nvidia-ml-py3";
+    version = "7.352.0";
+
+    src = myPython.pkgs.fetchPypi {
+      inherit pname version;
+      sha256 = "0xqjypqj0cv7aszklyaad7x3fsqs0q0k3iwq7bk3zmz9ks8h43rr";
+    };
+  };
+
+  fastai = myPython.pkgs.buildPythonPackage rec {
     pname = "fastai";
     version = "1.0.46";
 
-    src = fetchPypi {
+    src = myPython.pkgs.fetchPypi {
       inherit pname version;
-      sha256 = "6aefa6ff89a993af7a7af40d3df3d0387d6663df99797981ec41b1431ec6d1e3";
+      sha256 = "1px9j8zair0dcbi5rsdzrmnlwkiy56q5rcqwna5qg59c1jb94xnl";
     };
 
-    propagatedBuildInputs = [ ];
-
-    checkInputs = [
-      # pytest
-      # testpath
-      # responses
+    propagatedBuildInputs = [
+      myPython.pkgs.beautifulsoup4
+      myPython.pkgs.bottleneck
+      fastprogress
+      myPython.pkgs.matplotlib
+      nvidia-ml-py3
+      myPython.pkgs.pandas
+      myPython.pkgs.spacy
+      myPython.pkgs.torchvision
+      myPython.pkgs.typing
     ];
-
-    # Disable test that needs some ini file.
-    # Disable test that wants hg
-    checkPhase = ''
-      #HOME=$(mktemp -d) pytest -k "not test_invalid_classifier and not test_build_sdist"
-    '';
   };
 
-  myPythonPackages = ps: with ps; [
+  myPythonPackages = with myPython.pkgs; [
     fastai
     ipykernel
     numpy
@@ -58,24 +76,27 @@ let
     torchvision
   ];
 
+  myPythonEnv = myPython.buildEnv.override {
+    extraLibs = myPythonPackages;
+    # Both msgpack and msgpack-python try to install the same files.
+    ignoreCollisions = true;
+  };
+
   myJupyter = jupyter.override {
     definitions = {
-      python3 =
-        let
-          env = python37.withPackages myPythonPackages;
-        in {
-          displayName = "Python 3";
-          argv = [
-            "${env.interpreter}"
-            "-m"
-            "ipykernel_launcher"
-            "-f"
-            "{connection_file}"
-          ];
-          language = "python";
-          logo32 = "${env.sitePackages}/ipykernel/resources/logo-32x32.png";
-          logo64 = "${env.sitePackages}/ipykernel/resources/logo-64x64.png";
-        };
+      python3 = {
+        displayName = "Python 3";
+        argv = [
+          "${myPythonEnv.interpreter}"
+          "-m"
+          "ipykernel_launcher"
+          "-f"
+          "{connection_file}"
+        ];
+        language = "python";
+        logo32 = "${myPythonEnv.sitePackages}/ipykernel/resources/logo-32x32.png";
+        logo64 = "${myPythonEnv.sitePackages}/ipykernel/resources/logo-64x64.png";
+      };
     };
   };
 
@@ -86,17 +107,7 @@ mkShell {
   buildInputs = [
     myJupyter
   ];
-  inputsFrom = [
-    # git
-    # libxml2
-    # libxslt
-    # libzip
-    # openssl
-    # mypython.env
-    # stdenv
-    # taglib
-    # zlib
-  ];
+  inputsFrom = [ ];
   shellHook = ''
     # Need to set the source date epoch to 1980 because python's zip thing is terrible?
     export SOURCE_DATE_EPOCH=315532800

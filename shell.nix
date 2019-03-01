@@ -1,4 +1,7 @@
-{ nixpkgs ? null }:
+{ nixpkgs ? null
+, libcudaPathStr ? "/usr/lib/x86_64-linux-gnu/libcuda.so.1"
+, libnvidiaFatPathStr ? "/usr/lib/x86_64-linux-gnu/libnvidia-fatbinaryloader.so.396.54"
+}:
 
 let
   nixpkgsSrc =
@@ -31,6 +34,8 @@ let
       inherit pname version;
       sha256 = "1afrhrr9l8pn7gzr5f5rscj9x64vng7n33cxgl95s022lbc4s489";
     };
+
+    doCheck = false;
   };
 
   nvidia-ml-py3 = myPython.pkgs.buildPythonPackage rec {
@@ -63,6 +68,8 @@ let
       myPython.pkgs.torchvision
       myPython.pkgs.typing
     ];
+
+    doCheck = false;
   };
 
   myPythonPackages = with myPython.pkgs; [
@@ -111,5 +118,8 @@ mkShell {
   shellHook = ''
     # Need to set the source date epoch to 1980 because python's zip thing is terrible?
     export SOURCE_DATE_EPOCH=315532800
+
+    # Need to preload CUDA.
+    export LD_PRELOAD="${libcudaPathStr}:${libnvidiaFatPathStr}"
   '';
 }

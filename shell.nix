@@ -1,6 +1,5 @@
 { nixpkgs ? null
-, libcudaPathStr ? "/usr/lib/x86_64-linux-gnu/libcuda.so.1"
-, libnvidiaFatPathStr ? "/usr/lib/x86_64-linux-gnu/libnvidia-fatbinaryloader.so.396.54"
+, ldLibraryPathStr ? "/usr/lib/x86_64-linux-gnu"
 }:
 
 let
@@ -112,8 +111,10 @@ in
 mkShell {
   name = "fast.ai-course-jupyter-env";
   buildInputs = [
+    # You can either use myPythonEnv or myJupyter as a build input, but you
+    # can't have both.
     myJupyter
-    myPythonEnv
+    #myPythonEnv
   ];
   inputsFrom = [ ];
   shellHook = ''
@@ -121,6 +122,6 @@ mkShell {
     export SOURCE_DATE_EPOCH=315532800
 
     # Need to preload CUDA.
-    export LD_PRELOAD="${libcudaPathStr}:${libnvidiaFatPathStr}"
+    export LD_LIBRARY_PATH="$LD_LIBRARY_PATH:${ldLibraryPathStr}"
   '';
 }

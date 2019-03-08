@@ -25,6 +25,19 @@ with pkgs;
 let
 
   myPythonPackageOverrides = self: super: {
+
+    pytorch = super.pytorch.overridePythonAttrs (oldAttrs: rec {
+      version = "1.0.1";
+      pname = "pytorch";
+      src = fetchFromGitHub {
+        owner  = "pytorch";
+        repo   = "pytorch";
+        rev    = "v${version}";
+        fetchSubmodules = true;
+        sha256 = "0xs09i1rk9n13a9i9aw5i7arny5zfsxj2c23ahpb20jdgnc4rr4v";
+      };
+    });
+
     fastprogress = self.buildPythonPackage rec {
       pname = "fastprogress";
       version = "0.1.20";

@@ -112,12 +112,14 @@ let
   myPythonPackages = with myPython.pkgs; [
     fastai
     ipykernel
+    ipywidgets
     numpy
     pandas
     pytorch
     scikitlearn
     scipy
     torchvision
+    widgetsnbextension
   ];
 
   myPythonEnv = myPython.buildEnv.override {
@@ -127,6 +129,7 @@ let
   };
 
   myJupyter = jupyter.override {
+    python3 = myPython;
     definitions = {
       python3 = {
         displayName = "Python 3";
@@ -144,24 +147,34 @@ let
     };
   };
 
+  # ipywidgets needs to have it's notebook argument overridden with
+  # myJupyter.  This is so that we don't get collisions when creating
+  # myJupyterEnv.
+  myIpywidgets = myPython.pkgs.ipywidgets.override {
+    notebook = myJupyter;
+    widgetsnbextension = myWidgetsnbextension;
+  };
+
+  # widgetsnbextension needs to have it's notebook argument overridden with
+  # myJupyter.  This is so that we don't get collisions when creating
+  # myJupyterEnv.
+  myWidgetsnbextension = myPython.pkgs.widgetsnbextension.override {
+    notebook = myJupyter;
+    ipywidgets = myIpywidgets;
+  };
+
+  # myJupyterEnv is an environment that contains Jupyter and some extensions
+  # (like ipywidgets and widgetsnbextension).  Extensions have to be enabled
+  # for some things in Jupyter to work.  Also, make sure you trust your
+  # Jupyter notebooks, or some things may not work correctly.
+  myJupyterEnv = myPython.buildEnv.override {
+    extraLibs = [
+      myJupyter
+      myIpywidgets
+      myWidgetsnbextension
+    ];
+  };
 in
-
-#mkShell {
-#  name = "fast.ai-course-jupyter-env";
-#  buildInputs = [
-#    # You can either use myPythonEnv or myJupyter as a build input, but you
-#    # can't have both.
-#    myJupyter
-#    #myPythonEnv
-#  ];
-#  inputsFrom = [ ];
-#  shellHook = ''
-#    # Need to set the source date epoch to 1980 because python's zip thing is terrible?
-#    export SOURCE_DATE_EPOCH=315532800
-
-#    # Need to preload CUDA.
-#  '';
-#}
 
 writeShellScriptBin "run-fastai-jupyter" ''
   export SOURCE_DATE_EPOCH=315532800
@@ -169,6 +182,5 @@ writeShellScriptBin "run-fastai-jupyter" ''
   # Need to preload CUDA.
   export LD_PRELOAD="${nvidiaLibsPath}/libcuda.so.1 ${nvidiaLibsPath}/libnvidia-fatbinaryloader.so.396.54 ${nvidiaLibsPath}/libnvidia-ptxjitcompiler.so ${nvidiaLibsPath}/libnvidia-ml.so"
 
-  ${myJupyter}/bin/jupyter-notebook --ip 0.0.0.0
-  #${myPythonEnv}/bin/ipython
+  ${myJupyterEnv}/bin/jupyter-notebook --ip 0.0.0.0
 ''

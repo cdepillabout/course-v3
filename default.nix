@@ -112,6 +112,7 @@ let
   myPythonPackages = with myPython.pkgs; [
     fastai
     ipykernel
+    # I think ideally this would be myIpywidgets we have defined below.
     ipywidgets
     numpy
     pandas
@@ -119,6 +120,7 @@ let
     scikitlearn
     scipy
     torchvision
+    # I think ideally this would be myWidgetsnbextension we have defined below.
     widgetsnbextension
   ];
 

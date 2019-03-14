@@ -1,6 +1,51 @@
-{ nixpkgs ? null
+# This derivation creates a small shell script that can be run to start a
+# Jupyter notebook.  This Jupyter notebook should have all the libraries needed
+# for working through the fast.ai Practical Deep Learning for Coders course,
+# v3.
+#
+# In order to build the shell script and all dependencies, first you need to
+# install nix (https://nixos.org/nix/download.html).  Then, just run
+# `nix-build` in this directory.
+#
+# The only tricky thing this derivation does is setting up paths so that CUDA
+# will work correctly.  This derivation takes a `nvidiaLibsPath` argument that
+# should be a string corresponding to the path that contains your CUDA
+# libraries.  By default it is "/usr/lib/x86_64-linux-gnu", which works on
+# Ubuntu, but may need to be changed for other distributions.
+#
+# Here is how you can change it when running `nix-build`:
+#
+# $ nix-build --argstr nvidiaLibsPath /usr/local/lib
+#
+# The output shell script assumes you have the NVIDIA driver version 394
+# installed on your system.  You may need to edit the small shell script at the
+# end of this file if you have a different version of the NVIDIA driver.
+#
+# Once you've built the script with `nix-build`, you can directly run it:
+#
+# $ ./result/bin/run-fastai-jupyter
+#
+# This should start Jupyter running with a Python kernel with fastai, pytorch,
+# numpy, etc.
+#
+# You can access this Jupyter notebook on http://localhost:8888.
+
+
+{ # This allows you to use a different nixpkgs version.  Although it is
+  # suggested to leave this as null so that you get the known working version
+  # of nixpkgs.
+  nixpkgs ? null
+  # This should be a string to the directory that contains CUDA libraries, like
+  # libcuda.so, libnvidia-fatbinaryloader.so.*, libnvidia-ptxjitcompiler.so,
+  # libnvidia-ml.so, etc.
+  #
+  # The output derivation uses LD_PRELOAD to make sure all of these necessary
+  # libraries get loaded.  This works well on Ubuntu, but there is probably a
+  # better way to do it if you are on NixOS.
 , nvidiaLibsPath ? "/usr/lib/x86_64-linux-gnu"
 }:
+
+assert builtins.isString nvidiaLibsPath;
 
 let
   nixpkgsSrc =
@@ -12,6 +57,9 @@ let
           sha256 = "1yxmv04v2dywk0a5lxvi9a2rrfq29nw8qsm33nc856impgxadpgf";
         }
       else nixpkgs;
+  # Import nixpkgs and makre sure that cudaSupport is enabled.  This is needed
+  # for compiling pytorch with CUDA support.  allowUnfree needs to be true to
+  # build CUDA.
   pkgs = import nixpkgsSrc {
     config = {
       allowUnfree = true;
@@ -24,9 +72,13 @@ with pkgs;
 
 let
 
+  # Override some python packages with known working versions.
   myPythonPackageOverrides = self: super: {
 
     pytorch = super.pytorch.overridePythonAttrs (oldAttrs: rec {
+      # The hardcoded version of nixpkgs only has pytorch-1.0.0.  This version
+      # of pytorch has bugs with code that operates using the multiprocess
+      # library.  These bugs appear to have been fixed in pytorch-1.0.1.
       version = "1.0.1";
       pname = "pytorch";
       src = fetchFromGitHub {
@@ -38,6 +90,7 @@ let
       };
     });
 
+    # This is needed for fastai.
     fastprogress = self.buildPythonPackage rec {
       pname = "fastprogress";
       version = "0.1.20";
@@ -47,9 +100,11 @@ let
         sha256 = "1afrhrr9l8pn7gzr5f5rscj9x64vng7n33cxgl95s022lbc4s489";
       };
 
+      # Disable tests because they fail.
       doCheck = false;
     };
 
+    # This is needed for fastai.
     nvidia-ml-py3 = self.buildPythonPackage rec {
       pname = "nvidia-ml-py3";
       version = "7.352.0";
@@ -60,6 +115,8 @@ let
       };
     };
 
+    # Version of fastai that works with the Practical Deep Learning for Coders
+    # course v3.
     fastai = self.buildPythonPackage rec {
       pname = "fastai";
       version = "1.0.46";
@@ -95,6 +152,7 @@ let
         responses
       ];
 
+      # fastai tests fail.
       doCheck = false;
     };
 
@@ -105,25 +163,26 @@ let
     });
   };
 
-  # This allows you to choose between python-3.6 and python-3.7.
-  #myPython = python36.override { packageOverrides = myPythonPackageOverrides; };
+  # myPython is defined to be python-3.7 with our package overrides from above.
   myPython = python37.override { packageOverrides = myPythonPackageOverrides; };
 
+  # These are the packages we want available to the Python kernel running in
+  # Jupyter.  You can add more python packages if you need them.
   myPythonPackages = with myPython.pkgs; [
     fastai
     ipykernel
-    # I think ideally this would be myIpywidgets we have defined below.
-    ipywidgets
+    ipywidgets # I think ideally this would be myIpywidgets we have defined below.
     numpy
     pandas
     pytorch
     scikitlearn
     scipy
     torchvision
-    # I think ideally this would be myWidgetsnbextension we have defined below.
-    widgetsnbextension
+    widgetsnbextension # I think ideally this would be myWidgetsnbextension we have defined below.
   ];
 
+  # This is the python environment that contains myPythonPackages.  This will
+  # be the environment used in the Python kernel in Jupyter.
   myPythonEnv = myPython.buildEnv.override {
     extraLibs = myPythonPackages;
     # Both msgpack and msgpack-python try to install the same files.
@@ -131,8 +190,10 @@ let
   };
 
   myJupyter = jupyter.override {
+    # This makes sure Jupyter is built with our python package overrides.
     python3 = myPython;
     definitions = {
+      # This is the Python kernel we have defined above.
       python3 = {
         displayName = "Python 3";
         argv = [
@@ -178,11 +239,18 @@ let
   };
 in
 
+# This writes a shell script that can be run to start the Jupyter notebook.
 writeShellScriptBin "run-fastai-jupyter" ''
+  # This is needed because Python's zip implementation doesn't understand old
+  # dates.
   export SOURCE_DATE_EPOCH=315532800
 
-  # Need to preload CUDA.
+  # Need to preload CUDA.  This assumes that the NVIDIA driver version 396 is
+  # being used.  You may need to change this line if you're using a different
+  # version of the NVIDIA driver.
   export LD_PRELOAD="${nvidiaLibsPath}/libcuda.so.1 ${nvidiaLibsPath}/libnvidia-fatbinaryloader.so.396.54 ${nvidiaLibsPath}/libnvidia-ptxjitcompiler.so ${nvidiaLibsPath}/libnvidia-ml.so"
 
+  # Start the Jupyter notebook and listen on 0.0.0.0.  Delete the `--ip
+  # 0.0.0.0` argument if you only want to listen on localhost.
   ${myJupyterEnv}/bin/jupyter-notebook --ip 0.0.0.0
 ''

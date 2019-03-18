@@ -161,6 +161,7 @@ let
       LC_ALL = "C.UTF8";
       LANG = "C.UTF8";
     });
+
   };
 
   # myPython is defined to be python-3.7 with our package overrides from above.
@@ -237,20 +238,51 @@ let
       myWidgetsnbextension
     ];
   };
+
+  # This is needed to download datasets from kaggle.
+  kaggle = with myPython.pkgs; buildPythonApplication rec {
+    pname = "kaggle";
+    version = "1.5.3";
+
+    src = fetchPypi {
+      inherit pname version;
+      sha256 = "02ghghq62pdc656s34zs3l2rmflxykd8g6ggav0dg8vj87w6p39b";
+    };
+
+    propagatedBuildInputs = [
+      certifi
+      dateutil
+      python-slugify
+      requests
+      six
+      tqdm
+    ];
+
+    doCheck = false;
+  };
+
+  run-fastai-jupyter-script =
+    # This writes a shell script that can be run to start the Jupyter notebook.
+    writeShellScriptBin "run-fastai-jupyter" ''
+      # This is needed because Python's zip implementation doesn't understand old
+      # dates.
+      export SOURCE_DATE_EPOCH=315532800
+
+      # Need to preload CUDA.  This assumes that the NVIDIA driver version 396 is
+      # being used.  You may need to change this line if you're using a different
+      # version of the NVIDIA driver.
+      export LD_PRELOAD="${nvidiaLibsPath}/libcuda.so.1 ${nvidiaLibsPath}/libnvidia-fatbinaryloader.so.396.54 ${nvidiaLibsPath}/libnvidia-ptxjitcompiler.so ${nvidiaLibsPath}/libnvidia-ml.so"
+
+      # Start the Jupyter notebook and listen on 0.0.0.0.  Delete the `--ip
+      # 0.0.0.0` argument if you only want to listen on localhost.
+      ${myJupyterEnv}/bin/jupyter-notebook --ip 0.0.0.0
+    '';
 in
 
-# This writes a shell script that can be run to start the Jupyter notebook.
-writeShellScriptBin "run-fastai-jupyter" ''
-  # This is needed because Python's zip implementation doesn't understand old
-  # dates.
-  export SOURCE_DATE_EPOCH=315532800
-
-  # Need to preload CUDA.  This assumes that the NVIDIA driver version 396 is
-  # being used.  You may need to change this line if you're using a different
-  # version of the NVIDIA driver.
-  export LD_PRELOAD="${nvidiaLibsPath}/libcuda.so.1 ${nvidiaLibsPath}/libnvidia-fatbinaryloader.so.396.54 ${nvidiaLibsPath}/libnvidia-ptxjitcompiler.so ${nvidiaLibsPath}/libnvidia-ml.so"
-
-  # Start the Jupyter notebook and listen on 0.0.0.0.  Delete the `--ip
-  # 0.0.0.0` argument if you only want to listen on localhost.
-  ${myJupyterEnv}/bin/jupyter-notebook --ip 0.0.0.0
-''
+symlinkJoin {
+  name = "run-fastai-jupyter-script-plus-tools";
+  paths = [
+    kaggle
+    run-fastai-jupyter-script
+  ];
+}
